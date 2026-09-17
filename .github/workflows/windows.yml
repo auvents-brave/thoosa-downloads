@@ -1,0 +1,100 @@
+# Builds Thoosa for Windows — the only Windows build, the WinUI head — from
+# the private application repository, here where Actions minutes are free.
+#
+# Manual only, and deliberately no pull_request trigger: the job holds a
+# read-only token for the application's source (secret THOOSA_SOURCE_TOKEN,
+# fine-grained, Contents + Actions read on ThoosaUno and BoatTools). The
+# source never lands in this repository; the logs are public.
+name: Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ThoosaUno branch, tag or commit to build"
+        default: main
+      release:
+        description: "Release tag to attach the archives to (empty: artefact only)"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: auvents-brave/ThoosaUno
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.THOOSA_SOURCE_TOKEN }}
+          path: ThoosaUno
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "10.0.301" }
+
+      # The bridges and their Swift runtime, built by BoatTools' public
+      # "Bridge Windows" workflow.
+      - name: Fetch the Windows bridges
+        shell: bash
+        working-directory: ThoosaUno
+        env:
+          GH_TOKEN: ${{ secrets.THOOSA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          read -r run sha < <(gh run list --repo auvents-brave/BoatTools --workflow bridge-windows.yml \
+            --status success --limit 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')
+          test -n "${run:-}" || { echo "no successful Bridge Windows run on BoatTools"; exit 1; }
+          echo "Bridges from BoatTools ${sha:0:7} (run $run)" >> "$GITHUB_STEP_SUMMARY"
+          for arch in x64 arm64; do
+            gh run download "$run" --repo auvents-brave/BoatTools \
+              --name "bridges-windows-$arch" --dir "Native/win-$arch"
+            test -f "Native/win-$arch/BoatToolsBridge.dll"
+          done
+
+      # From the project directory with a relative path: Uno's resource
+      # generator mislabels the languages' resources given an absolute one.
+      - name: Publish
+        shell: bash
+        working-directory: ThoosaUno
+        run: |
+          set -euo pipefail
+          for arch in x64 arm64; do
+            dotnet publish Thoosa/Thoosa.csproj -f net10.0-windows10.0.26100 -r "win-$arch" -c Release \
+              --self-contained -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true \
+              -p:SkipBridgeBuild=true -o "../stage/$arch/Thoosa"
+            test -f "../stage/$arch/Thoosa/BoatToolsBridge.dll"
+          done
+          commit=$(git rev-parse HEAD)
+          echo "$commit" > ../source-commit.txt
+          echo "Thoosa from ThoosaUno ${commit:0:7}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archive
+        shell: pwsh
+        run: |
+          foreach ($arch in 'x64', 'arm64') {
+            Compress-Archive -Path "stage/$arch/Thoosa" -DestinationPath "Thoosa-windows-$arch.zip"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thoosa-windows
+          path: |
+            Thoosa-windows-*.zip
+            source-commit.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to the release
+        if: inputs.release != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: gh release upload "$TAG" Thoosa-windows-x64.zip Thoosa-windows-arm64.zip --clobber --repo "$GITHUB_REPOSITORY"

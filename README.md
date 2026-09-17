@@ -4,10 +4,12 @@ Thoôsa is a marine navigation app. It is native on Apple platforms; this
 repository carries the **companion builds for the platforms the Apple app
 cannot reach** — Windows, Android and Linux.
 
-Take them from the [latest release](../../releases/latest). Nothing else lives
-here: no source, no issues, no history. The application is developed elsewhere,
-and only its packaged builds are published here so that the download links on
-[pitch-and-roll.com](https://pitch-and-roll.com) stay stable.
+Take them from the [latest release](../../releases/latest). No source lives
+here: the application is developed elsewhere, and only its packaged builds are
+published here so that the download links on
+[pitch-and-roll.com](https://pitch-and-roll.com) stay stable. The Windows builds
+are compiled by this repository's own workflow, since they cannot be built on
+the Mac that packages the others.
 
 | Platform | File |
 | --- | --- |
