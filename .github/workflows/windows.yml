@@ -36,7 +36,7 @@ jobs:
           path: ThoosaUno
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "10.0.301" }
 
       # The bridges and their Swift runtime, built by BoatTools' public
@@ -60,6 +60,8 @@ jobs:
 
       # From the project directory with a relative path: Uno's resource
       # generator mislabels the languages' resources given an absolute one.
+      # TargetFrameworks narrowed to Windows, or restore evaluates the Android
+      # head too and demands its workload.
       - name: Publish
         shell: bash
         working-directory: ThoosaUno
@@ -67,6 +69,7 @@ jobs:
           set -euo pipefail
           for arch in x64 arm64; do
             dotnet publish Thoosa/Thoosa.csproj -f net10.0-windows10.0.26100 -r "win-$arch" -c Release \
+              -p:TargetFrameworks=net10.0-windows10.0.26100 \
               --self-contained -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true \
               -p:SkipBridgeBuild=true -o "../stage/$arch/Thoosa"
             test -f "../stage/$arch/Thoosa/BoatToolsBridge.dll"
