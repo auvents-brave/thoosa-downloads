@@ -67,9 +67,12 @@ jobs:
         working-directory: ThoosaUno
         run: |
           set -euo pipefail
+          # One architecture at a time, from clean intermediates: the first
+          # publish's platform (x64) otherwise sticks to the second.
           for arch in x64 arm64; do
+            rm -rf Thoosa/bin Thoosa/obj
             dotnet publish Thoosa/Thoosa.csproj -f net10.0-windows10.0.26100 -r "win-$arch" -c Release \
-              -p:TargetFrameworks=net10.0-windows10.0.26100 \
+              -p:TargetFrameworks=net10.0-windows10.0.26100 -p:Platform="$arch" -p:PlatformTarget="$arch" \
               --self-contained -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true \
               -p:SkipBridgeBuild=true -o "../stage/$arch/Thoosa"
             test -f "../stage/$arch/Thoosa/BoatToolsBridge.dll"
