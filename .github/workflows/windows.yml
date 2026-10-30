@@ -85,10 +85,25 @@ jobs:
           echo "$commit" > ../source-commit.txt
           echo "Thoosa from ThoosaUno ${commit:0:7}" >> "$GITHUB_STEP_SUMMARY"
 
+      # Debug symbols are 42% of what we were shipping — 241 MB across six
+      # files, most of them SkiaSharp's, ANGLE's and HarfBuzz's native .pdb
+      # from their NuGet packages. Nobody debugs those here, and the app does
+      # not read them. `DebugType` only governs our own assemblies, so the
+      # third-party ones have to be swept at packaging time.
       - name: Archive
         shell: pwsh
         run: |
           foreach ($arch in 'x64', 'arm64') {
+            $before = (Get-ChildItem "stage/$arch/Thoosa" -Recurse -File |
+                       Measure-Object Length -Sum).Sum
+            $pdb = Get-ChildItem "stage/$arch/Thoosa" -Recurse -Filter *.pdb
+            $freed = ($pdb | Measure-Object Length -Sum).Sum
+            $pdb | Remove-Item -Force
+            $after = (Get-ChildItem "stage/$arch/Thoosa" -Recurse -File |
+                      Measure-Object Length -Sum).Sum
+            "$arch : dropped $($pdb.Count) .pdb, $([math]::Round($freed/1MB)) MB; " +
+              "$([math]::Round($before/1MB)) MB -> $([math]::Round($after/1MB)) MB" |
+              Tee-Object -Append "$env:GITHUB_STEP_SUMMARY"
             Compress-Archive -Path "stage/$arch/Thoosa" -DestinationPath "Thoosa-windows-$arch.zip"
           }
 
