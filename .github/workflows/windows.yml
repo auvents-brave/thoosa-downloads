@@ -43,8 +43,9 @@ jobs:
       # The bridges and their Swift runtime, built by the public "Bridge
       # Windows" workflows of BoatTools (SthenoBridge + BoatToolsBridge) and
       # of Phorcys (PhorcysBridge). Both artefacts carry the same Swift
-      # runtime DLLs, built from the same release, so unpacking them into one
-      # folder simply overwrites like with like.
+      # runtime DLLs, so they overlap — and `gh run download` refuses to
+      # overwrite a file already there, stopping mid-archive. Unpack each into
+      # its own directory and merge with cp, which does overwrite.
       - name: Fetch the Windows bridges
         shell: bash
         working-directory: ThoosaUno
@@ -59,8 +60,10 @@ jobs:
             test -n "${run:-}" || { echo "no successful Bridge Windows run on $1"; exit 1; }
             echo "Bridges from $1 ${sha:0:7} (run $run)" >> "$GITHUB_STEP_SUMMARY"
             for arch in x64 arm64; do
+              rm -rf "unpack/$1-$arch" && mkdir -p "unpack/$1-$arch" "Native/win-$arch"
               gh run download "$run" --repo "auvents-brave/$1" \
-                --name "$2-$arch" --dir "Native/win-$arch"
+                --name "$2-$arch" --dir "unpack/$1-$arch"
+              cp -f "unpack/$1-$arch"/* "Native/win-$arch/"
               test -f "Native/win-$arch/$3"
             done
           }
