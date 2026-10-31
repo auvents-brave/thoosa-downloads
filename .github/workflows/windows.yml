@@ -3,7 +3,8 @@
 #
 # Manual only, and deliberately no pull_request trigger: the job holds a
 # read-only token for the application's source (secret THOOSA_SOURCE_TOKEN,
-# fine-grained, Contents + Actions read on ThoosaUno and BoatTools). The
+# fine-grained, Contents + Actions read on ThoosaUno; BoatTools and Phorcys
+# are public). The
 # source never lands in this repository; the logs are public.
 name: Windows
 
@@ -39,8 +40,11 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with: { dotnet-version: "10.0.301" }
 
-      # The bridges and their Swift runtime, built by BoatTools' public
-      # "Bridge Windows" workflow.
+      # The bridges and their Swift runtime, built by the public "Bridge
+      # Windows" workflows of BoatTools (SthenoBridge + BoatToolsBridge) and
+      # of Phorcys (PhorcysBridge). Both artefacts carry the same Swift
+      # runtime DLLs, built from the same release, so unpacking them into one
+      # folder simply overwrites like with like.
       - name: Fetch the Windows bridges
         shell: bash
         working-directory: ThoosaUno
@@ -48,15 +52,20 @@ jobs:
           GH_TOKEN: ${{ secrets.THOOSA_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          read -r run sha < <(gh run list --repo auvents-brave/BoatTools --workflow bridge-windows.yml \
-            --status success --limit 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')
-          test -n "${run:-}" || { echo "no successful Bridge Windows run on BoatTools"; exit 1; }
-          echo "Bridges from BoatTools ${sha:0:7} (run $run)" >> "$GITHUB_STEP_SUMMARY"
-          for arch in x64 arm64; do
-            gh run download "$run" --repo auvents-brave/BoatTools \
-              --name "bridges-windows-$arch" --dir "Native/win-$arch"
-            test -f "Native/win-$arch/BoatToolsBridge.dll"
-          done
+          fetch() {   # $1 repository   $2 artefact prefix   $3 a DLL to expect
+            local run sha
+            read -r run sha < <(gh run list --repo "auvents-brave/$1" --workflow bridge-windows.yml \
+              --status success --limit 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')
+            test -n "${run:-}" || { echo "no successful Bridge Windows run on $1"; exit 1; }
+            echo "Bridges from $1 ${sha:0:7} (run $run)" >> "$GITHUB_STEP_SUMMARY"
+            for arch in x64 arm64; do
+              gh run download "$run" --repo "auvents-brave/$1" \
+                --name "$2-$arch" --dir "Native/win-$arch"
+              test -f "Native/win-$arch/$3"
+            done
+          }
+          fetch BoatTools bridges-windows BoatToolsBridge.dll
+          fetch Phorcys phorcys-bridges-windows PhorcysBridge.dll
 
       # From the project directory with a relative path: Uno's resource
       # generator mislabels the languages' resources given an absolute one.
@@ -80,6 +89,7 @@ jobs:
               --self-contained -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true \
               -p:SkipBridgeBuild=true -o "../stage/$arch/Thoosa"
             test -f "../stage/$arch/Thoosa/BoatToolsBridge.dll"
+            test -f "../stage/$arch/Thoosa/PhorcysBridge.dll"
           done
           commit=$(git rev-parse HEAD)
           echo "$commit" > ../source-commit.txt
